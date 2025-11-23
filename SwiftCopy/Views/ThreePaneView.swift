@@ -1,0 +1,187 @@
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct ThreePaneView: View {
+    @ObservedObject var viewModel: MainViewModel
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Headers
+            HStack(spacing: 0) {
+                // Source Header
+                HStack(spacing: 8) {
+                    // Expand/Collapse All Button (Left of Type)
+                    Button(action: { viewModel.toggleExpandAll() }) {
+                        Image(systemName: "list.bullet.indent") // Or some icon
+                            .frame(width: 20)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Select All / Deselect All (Checkmark Icon)
+                    Image(systemName: "checkmark.circle")
+                        .frame(width: 20)
+                        .onTapGesture {
+                            viewModel.toggleSelectAll()
+                        }
+                    
+                    SortButton(title: "Name", option: .name, viewModel: viewModel)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SortButton(title: "Date", option: .date, viewModel: viewModel)
+                        .frame(width: 140, alignment: .trailing)
+                    SortButton(title: "Size", option: .size, viewModel: viewModel)
+                        .frame(width: 60, alignment: .trailing)
+                }
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity)
+                
+                Divider().frame(height: 20)
+                
+                Text("Status")
+                    .font(.headline)
+                    .frame(width: 60)
+                
+                Divider().frame(height: 20)
+                
+                // Destination Header (Mirrors Source layout but static)
+                HStack(spacing: 8) {
+                    Text("").frame(width: 20) // No checkbox
+                    Text("").frame(width: 20) // No Type/Checkmark
+                    Text("Name").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Date").frame(width: 140, alignment: .trailing)
+                    Text("Size").frame(width: 60, alignment: .trailing)
+                }
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.vertical, 4)
+            .background(Color(NSColor.controlBackgroundColor))
+            
+            Divider()
+            
+            // Content
+            // Content
+            HStack(spacing: 0) {
+                // We use a ZStack to overlay drop zones over the list?
+                // No, we want the list to be droppable?
+                // Actually, the user wants "Left half for Source, Right half for Target".
+                // Since it's a single List row spanning both, we can't easily split the drop zone of the *List* itself.
+                // But we can wrap the List in a GeometryReader and handle drops on the background?
+                // Or we can just rely on the Header drop zones?
+                // The user specifically asked for "Left half... Right half...".
+                
+                List(viewModel.flatFiles) { displayItem in
+                    UnifiedRowView(displayItem: displayItem, viewModel: viewModel)
+                }
+            }
+        }
+    }
+    
+    private func handleDrop(providers: [NSItemProvider], isSource: Bool) -> Bool {
+        guard let provider = providers.first else { return false }
+        
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { (item, error) in
+            if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                DispatchQueue.main.async {
+                    if isSource {
+                        viewModel.sourcePath = url
+                    } else {
+                        viewModel.destPath = url
+                    }
+                    viewModel.scan()
+                }
+            }
+        }
+        return true
+    }
+}
+
+struct SortButton: View {
+    let title: String
+    let option: MainViewModel.SortOption
+    @ObservedObject var viewModel: MainViewModel
+    
+    var body: some View {
+        Button(action: {
+            if viewModel.sortOption == option {
+                viewModel.sortAscending.toggle()
+            } else {
+                viewModel.sortOption = option
+                viewModel.sortAscending = true
+            }
+        }) {
+            HStack(spacing: 2) {
+                Text(title)
+                if viewModel.sortOption == option {
+                    Image(systemName: viewModel.sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct UnifiedRowView: View {
+    let displayItem: MainViewModel.DisplayItem
+    @ObservedObject var viewModel: MainViewModel
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Source
+            FileRowView(
+                item: displayItem.file,
+                isSource: true,
+                isSelected: viewModel.isSelected(displayItem.file.id),
+                depth: displayItem.depth,
+                isExpanded: viewModel.expandedFolderPaths.contains(displayItem.file.url),
+                onToggle: { viewModel.toggleSelection(for: displayItem.file) },
+                onExpand: { viewModel.toggleExpand(displayItem.file) }
+            )
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                handleDrop(providers: providers, isSource: true)
+            }
+            
+            Divider()
+            
+            // Status
+            ZStack {
+                if let status = viewModel.comparisonResults[displayItem.file.id] {
+                    Image(systemName: status.icon)
+                        .foregroundColor(status == .error ? .red : (status == .done ? .green : .blue))
+                }
+            }
+            .frame(width: 60)
+            
+            Divider()
+            
+            // Dest
+            FileRowView(item: displayItem.file, isSource: false)
+                .opacity(0.5)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleDrop(providers: providers, isSource: false)
+                }
+        }
+    }
+    
+    private func handleDrop(providers: [NSItemProvider], isSource: Bool) -> Bool {
+        guard let provider = providers.first else { return false }
+        
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { (item, error) in
+            if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                DispatchQueue.main.async {
+                    if isSource {
+                        viewModel.sourcePath = url
+                    } else {
+                        viewModel.destPath = url
+                    }
+                    viewModel.scan()
+                }
+            }
+        }
+        return true
+    }
+}

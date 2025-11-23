@@ -1,0 +1,32 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "sweetpad-lldb",
+            "request": "attach",
+            "name": "SweetPad: Build and Run (Wait for debugger)",
+            "preLaunchTask": "sweetpad: debugging-launch"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftCopy}",
+            "name": "Debug SwiftCopy",
+            "program": "${workspaceFolder:SwiftCopy}/.build/debug/SwiftCopy",
+            "preLaunchTask": "swift: Build Debug SwiftCopy"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftCopy}",
+            "name": "Release SwiftCopy",
+            "program": "${workspaceFolder:SwiftCopy}/.build/release/SwiftCopy",
+            "preLaunchTask": "swift: Build Release SwiftCopy"
+        }
+    ]
+}
