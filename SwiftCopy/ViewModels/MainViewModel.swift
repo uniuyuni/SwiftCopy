@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-
 import Combine
 
 class MainViewModel: ObservableObject {
@@ -14,6 +13,12 @@ class MainViewModel: ObservableObject {
     @Published var currentFile: String = ""
     @Published var transferSpeed: Double = 0.0 // MB/s
     @Published var timeRemaining: TimeInterval = 0.0 // Seconds
+    
+    @Published var sourceFilesCount: Int = 0
+    @Published var destFilesCount: Int = 0
+    @Published var addCount: Int = 0
+    @Published var updateCount: Int = 0
+    
     @Published var errorLog: [ErrorLogItem] = []
     @Published var showErrorLog: Bool = false
     @Published var searchText: String = ""
@@ -33,30 +38,6 @@ class MainViewModel: ObservableObject {
         }
         
         // Real-time updates
-        settings.objectWillChange.sink { [weak self] _ in
-            // objectWillChange emits BEFORE the change. We need to wait for the change to propagate?
-            // Or we can observe individual properties.
-            // Observing objectWillChange is easier but might trigger too often.
-            // Let's observe individual properties for precision.
-        }.store(in: &cancellables)
-        
-        // We need to observe the properties of the passed settings object.
-        // Since AppSettings uses @AppStorage, it might be tricky to observe directly via $property if it's not a @Published property wrapper in the same sense?
-        // AppSettings is ObservableObject, so @AppStorage triggers objectWillChange.
-        // But we want to know WHICH property changed to decide whether to scan or just compare.
-        // Actually, for MVP, let's just re-scan on any change. It's safer.
-        // But wait, re-scanning is expensive.
-        // Let's try to be smart.
-        
-        // Note: @AppStorage properties in an ObservableObject do trigger objectWillChange.
-        // But we can't easily distinguish which one changed without checking values or using specific publishers if we made them @Published.
-        // But they are @AppStorage.
-        // Let's just listen to objectWillChange and debounce?
-        // Or better, let's just re-scan.
-        
-        // Actually, we can attach logic to the View? No, ViewModel should handle it.
-        // Let's use a simple approach: Observe objectWillChange, wait a bit (debounce), then re-scan.
-        
         settings.objectWillChange
             .debounce(for: .milliseconds(100), scheduler: RunLoop.main)
             .sink { [weak self] _ in
@@ -96,9 +77,6 @@ class MainViewModel: ObservableObject {
     }
     
     private func handleSettingsChange() {
-        // We don't know exactly what changed, so we have to assume the worst (re-scan needed).
-        // Unless we cache the old values?
-        // For now, let's just re-scan. It handles everything.
         print("Settings changed, re-scanning...")
         scan()
     }
@@ -184,32 +162,29 @@ class MainViewModel: ObservableObject {
         
         // Identify actual copy targets
         let copyTargets = allCandidates.filter { item in
-            comparisonResults[item.id] == .copy
+            if let status = comparisonResults[item.id] {
+                return status == .add || status == .update
+            }
+            return false
         }
         
         // Check if all copy targets are currently selected
-        // (i.e., none of them are in excludedFileIds)
         let allTargetsSelected = copyTargets.allSatisfy { !excludedFileIds.contains($0.id) }
         
         if allTargetsSelected && !copyTargets.isEmpty {
-            // If all targets are already selected, we Deselect All.
-            // (This covers the "Smart Select" state -> "Deselect All" state transition)
+            // Deselect All
             for item in allCandidates {
                 excludedFileIds.insert(item.id)
             }
         } else {
-            // Otherwise, we apply Smart Select (Select only copy targets)
-            // 1. Start by excluding everything
+            // Smart Select (Select only copy targets)
             var newExcluded: Set<UUID> = []
             for item in allCandidates {
                 newExcluded.insert(item.id)
             }
             
-            // 2. Include .copy items and their ancestors
             for item in copyTargets {
-                // Include this item
                 newExcluded.remove(item.id)
-                
                 // Include ancestors
                 var currentId = item.id
                 while let parentId = parentMap[currentId] {
@@ -217,15 +192,6 @@ class MainViewModel: ObservableObject {
                     currentId = parentId
                 }
             }
-            
-            // Special case: If there are NO copy targets, and we are not fully deselected, maybe we should just deselect all?
-            // But the logic above does exactly that (newExcluded has everything).
-            // If copyTargets is empty: allTargetsSelected is true.
-            // So it enters first block -> Deselect All.
-            // If we are already deselected, it stays deselected.
-            // If we have manual selection but no copy targets, it deselects all.
-            // This seems correct.
-            
             excludedFileIds = newExcluded
         }
     }
@@ -285,8 +251,6 @@ class MainViewModel: ObservableObject {
     
     @Published var parentMap: [UUID: UUID] = [:] // Child ID -> Parent ID
     
-    // ... (inside scan, after sourceFiles = items)
-    
     private func buildParentMap(items: [FileItem], parentId: UUID? = nil) {
         for item in items {
             if let parentId = parentId {
@@ -298,8 +262,6 @@ class MainViewModel: ObservableObject {
         }
     }
     
-    // ...
-    
     private func selectAncestors(of item: FileItem) {
         var currentId = item.id
         while let parentId = parentMap[currentId] {
@@ -310,46 +272,13 @@ class MainViewModel: ObservableObject {
         }
     }
     
-    // Remove findItem as it's no longer needed for this purpose
-    // private func findItem...
-    
     func isSelected(_ id: UUID) -> Bool {
         return !excludedFileIds.contains(id)
-    }
-    
-    private func filterItems(_ items: [FileItem], query: String) -> [FileItem] {
-        var result: [FileItem] = []
-        for item in items {
-            let matches = item.name.localizedCaseInsensitiveContains(query)
-            var childrenMatch = false
-            var filteredChildren: [FileItem]? = nil
-            
-            if let children = item.children {
-                let filtered = filterItems(children, query: query)
-                if !filtered.isEmpty {
-                    childrenMatch = true
-                    filteredChildren = filtered
-                }
-            }
-            
-            if matches || childrenMatch {
-                var newItem = item
-                newItem.children = filteredChildren
-                result.append(newItem)
-            }
-        }
-        return result
     }
     
     private var totalBytesToCopy: Int64 = 0
     private var processedBytes: Int64 = 0
     private var startTime: Date?
-    
-    // For MVP, we flatten the list for display or handle hierarchy.
-    // Let's keep it simple: Top level list, and we scan recursively but maybe just show top level?
-    // The spec says "Finder-like list" and "Subfolders are hierarchical".
-    // Handling a full hierarchical tree in SwiftUI List can be tricky with `OutlineGroup` or `DisclosureGroup`.
-    // `FileItem` has `children`, so `OutlineGroup` should work.
     
     func selectSource() {
         let panel = NSOpenPanel()
@@ -391,15 +320,17 @@ class MainViewModel: ObservableObject {
         isScanning = true
         DispatchQueue.global(qos: .userInitiated).async {
             // Stage 1: Scan Source
-            // Always scan recursively so UI shows structure
             let items = FileScanner.scan(path: source, includeHidden: self.settings.copyHiddenFiles, recursive: true)
+            let destItems = FileScanner.scan(path: dest, includeHidden: self.settings.copyHiddenFiles, recursive: true)
             
             DispatchQueue.main.async {
                 self.sourceFiles = items
+                self.sourceFilesCount = self.countFiles(items)
+                self.destFilesCount = self.countFiles(destItems)
+                
                 self.parentMap = [:]
                 self.buildParentMap(items: items)
                 self.comparisonResults = [:] // Clear previous results
-                // Auto-expand top level? Maybe not.
             }
             
             // Stage 2: Compare
@@ -410,12 +341,33 @@ class MainViewModel: ObservableObject {
             var excluded: Set<UUID> = []
             self.calculateSmartSelection(items: items, results: results, excluded: &excluded)
             
+            // Calculate Stats (Add/Update)
+            var add = 0
+            var update = 0
+            for status in results.values {
+                if status == .add { add += 1 }
+                else if status == .update { update += 1 }
+            }
+            
             DispatchQueue.main.async {
                 self.comparisonResults = results
                 self.excludedFileIds = excluded
+                self.addCount = add
+                self.updateCount = update
                 self.isScanning = false
             }
         }
+    }
+    
+    private func countFiles(_ items: [FileItem]) -> Int {
+        var count = 0
+        for item in items {
+            count += 1
+            if let children = item.children {
+                count += self.countFiles(children)
+            }
+        }
+        return count
     }
     
     @discardableResult
@@ -435,17 +387,14 @@ class MainViewModel: ObservableObject {
             
             // Check self
             if let status = results[item.id] {
-                if status == .copy {
+                if status == .add || status == .update {
                     isIncluded = true
                 }
             }
             
             if isIncluded {
-                // If included, ensure NOT in excluded set
-                // (It's not in there by default since we start with empty, but good to be explicit if we change logic)
                 hasIncludedItem = true
             } else {
-                // Exclude
                 excluded.insert(item.id)
             }
         }
@@ -458,14 +407,7 @@ class MainViewModel: ObservableObject {
         let destPath = destRoot.standardized.path
         
         for item in items {
-            // Calculate relative path safely
             let itemPath = item.url.standardized.path
-            
-            // Ensure itemPath starts with sourcePath
-            // Note: If sourcePath has no trailing slash, and itemPath is /.../source/file, it works.
-            // But we should be careful about partial matches (e.g. /source vs /source_backup).
-            // Since we scanned FROM sourceRoot, it should be safe usually.
-            
             var relativePath = itemPath.replacingOccurrences(of: sourcePath, with: "")
             if relativePath.hasPrefix("/") {
                 relativePath.removeFirst()
@@ -477,7 +419,6 @@ class MainViewModel: ObservableObject {
             results[item.id] = status
             
             if let children = item.children {
-                // Only compare children if recursive scan is enabled
                 if self.settings.recursiveScan {
                     compareRecursively(items: children, sourceRoot: sourceRoot, destRoot: destRoot, results: &results)
                 }
@@ -495,11 +436,9 @@ class MainViewModel: ObservableObject {
         startTime = Date()
         errorLog.removeAll()
         
-        // Flatten items to get copy list
         let copyList = getCopyList(items: sourceFiles)
         let total = Double(copyList.count)
         
-        // Calculate total bytes
         totalBytesToCopy = copyList.reduce(0) { $0 + $1.size }
         
         var current = 0.0
@@ -512,12 +451,9 @@ class MainViewModel: ObservableObject {
                     self.currentFile = item.name
                 }
                 
-                // Standardize paths to handle /private/var vs /var symlinks
                 let sourcePath = sourceRoot.resolvingSymlinksInPath().path
                 let itemPath = item.url.resolvingSymlinksInPath().path
                 let relativePath = itemPath.replacingOccurrences(of: sourcePath, with: "")
-                
-                // Ensure relative path doesn't start with / if we are appending
                 let safeRelativePath = relativePath.hasPrefix("/") ? String(relativePath.dropFirst()) : relativePath
                 let destItemURL = destRoot.appendingPathComponent(safeRelativePath)
                 
@@ -527,22 +463,18 @@ class MainViewModel: ObservableObject {
                     self.comparisonResults[item.id] = status
                 }
                 
-                let startFileTime = Date()
-                
                 do {
                     if item.isDirectory {
-                        // Create dir if needed
                         try FileManager.default.createDirectory(at: destItemURL, withIntermediateDirectories: true, attributes: nil)
                     } else {
-                        // Check rule again just in case, or rely on comparison status?
-                        // Actually we should only copy if status is .copy.
-                        // But startCopy iterates copyList which is derived from comparisonResults.
-                        // So we are good.
                         try CopyManager.copy(source: item.url, dest: destItemURL, preserveAttributes: self.settings.preserveAttributes)
                     }
                     
                     DispatchQueue.main.async {
                         self.comparisonResults[item.id] = .done
+                        if status == .add { self.addCount = max(0, self.addCount - 1) }
+                        if status == .update { self.updateCount = max(0, self.updateCount - 1) }
+                        if status == .add { self.destFilesCount += 1 }
                     }
                 } catch {
                     print("Copy error: \(error)")
@@ -554,7 +486,6 @@ class MainViewModel: ObservableObject {
                     }
                 }
                 
-                // Update stats
                 self.processedBytes += item.size
                 current += 1
                 
@@ -563,12 +494,9 @@ class MainViewModel: ObservableObject {
                 
                 DispatchQueue.main.async {
                     self.progress = current / total
-                    
-                    if timeElapsed > 0.5 { // Update speed every 0.5s or so to avoid jitter, or just every file?
-                        // Simple average speed
+                    if timeElapsed > 0.5 {
                         let bytesPerSec = Double(self.processedBytes) / timeElapsed
                         self.transferSpeed = bytesPerSec / 1024 / 1024 // MB/s
-                        
                         if bytesPerSec > 0 {
                             let remainingBytes = Double(self.totalBytesToCopy - self.processedBytes)
                             self.timeRemaining = remainingBytes / bytesPerSec
@@ -589,11 +517,12 @@ class MainViewModel: ObservableObject {
     private func getCopyList(items: [FileItem]) -> [FileItem] {
         var list: [FileItem] = []
         for item in items {
-            // Skip if excluded
             if excludedFileIds.contains(item.id) { continue }
             
-            if comparisonResults[item.id] == .copy {
-                list.append(item)
+            if let status = comparisonResults[item.id] {
+                if status == .add || status == .update {
+                     list.append(item)
+                }
             }
             if let children = item.children {
                 list.append(contentsOf: getCopyList(items: children))

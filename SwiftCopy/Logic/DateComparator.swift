@@ -19,13 +19,13 @@ class DateComparator {
         
         // Check if dest exists
         if !fileManager.fileExists(atPath: destPath.path) {
-            return .copy // New file
+            return .add // New file
         }
         
         // If exists, check rule
         switch rule {
         case .always:
-            return .copy
+            return .update
         case .never:
             return .skip
         case .ifNewer:
@@ -52,9 +52,9 @@ class DateComparator {
             let tolerance: TimeInterval = 2.0
             
             if source.modificationDate.timeIntervalSinceReferenceDate > destDate.timeIntervalSinceReferenceDate + tolerance {
-                return .copy
+                return .update
             } else if abs(source.modificationDate.timeIntervalSinceReferenceDate - destDate.timeIntervalSinceReferenceDate) <= tolerance {
-                 return .done // Same
+                return .skip
             } else {
                 return .skip // Dest is newer
             }

@@ -59,20 +59,16 @@ struct ThreePaneView: View {
             Divider()
             
             // Content
-            // Content
-            HStack(spacing: 0) {
-                // We use a ZStack to overlay drop zones over the list?
-                // No, we want the list to be droppable?
-                // Actually, the user wants "Left half for Source, Right half for Target".
-                // Since it's a single List row spanning both, we can't easily split the drop zone of the *List* itself.
-                // But we can wrap the List in a GeometryReader and handle drops on the background?
-                // Or we can just rely on the Header drop zones?
-                // The user specifically asked for "Left half... Right half...".
-                
-                List(viewModel.flatFiles) { displayItem in
-                    UnifiedRowView(displayItem: displayItem, viewModel: viewModel)
-                }
+            List(viewModel.flatFiles) { displayItem in
+                UnifiedRowView(displayItem: displayItem, viewModel: viewModel)
             }
+            
+            Divider()
+            
+            // Status Bar
+            StatusBarView(viewModel: viewModel)
+                .padding(4)
+                .background(Color(NSColor.controlBackgroundColor))
         }
     }
     
@@ -92,6 +88,32 @@ struct ThreePaneView: View {
             }
         }
         return true
+    }
+}
+
+struct StatusBarView: View {
+    @ObservedObject var viewModel: MainViewModel
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Text("Source: \(viewModel.sourceFilesCount) items")
+            Text("Dest: \(viewModel.destFilesCount) items")
+            Spacer()
+            if viewModel.addCount > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle")
+                    Text("\(viewModel.addCount) to Add")
+                }
+            }
+            if viewModel.updateCount > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("\(viewModel.updateCount) to Update")
+                }
+            }
+        }
+        .font(.caption)
+        .padding(.horizontal, 8)
     }
 }
 
@@ -157,13 +179,22 @@ struct UnifiedRowView: View {
             Divider()
             
             // Dest
-            FileRowView(item: displayItem.file, isSource: false)
-                .opacity(0.5)
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                    handleDrop(providers: providers, isSource: false)
-                }
+            let status = viewModel.comparisonResults[displayItem.file.id]
+            // Hide filename if status is .add (meaning source exists, dest missing)
+            // But after copy, status becomes .done, so it should appear.
+            if status == .add {
+                 // Empty view for Dest
+                 Color.clear
+                    .frame(maxWidth: .infinity)
+            } else {
+                FileRowView(item: displayItem.file, isSource: false)
+                    .opacity(0.5)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        handleDrop(providers: providers, isSource: false)
+                    }
+            }
         }
     }
     
