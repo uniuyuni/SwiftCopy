@@ -16,6 +16,7 @@ struct SettingsView: View {
                 Toggle("Copy Hidden Files", isOn: $settings.copyHiddenFiles)
                 Toggle("Recursive Scan", isOn: $settings.recursiveScan)
                 Toggle("Preserve File Attributes", isOn: $settings.preserveAttributes)
+                Toggle("Checksum Comparison (Slow)", isOn: $settings.compareByHash)
             }
         }
         .padding()

@@ -415,7 +415,7 @@ class MainViewModel: ObservableObject {
             
             let destItemURL = URL(fileURLWithPath: destPath).appendingPathComponent(relativePath)
             
-            let status = DateComparator.compare(source: item, destPath: destItemURL, rule: self.settings.overwriteRule)
+            let status = DateComparator.compare(source: item, destPath: destItemURL, rule: self.settings.overwriteRule, compareByHash: self.settings.compareByHash)
             results[item.id] = status
             
             if let children = item.children {
@@ -457,7 +457,7 @@ class MainViewModel: ObservableObject {
                 let safeRelativePath = relativePath.hasPrefix("/") ? String(relativePath.dropFirst()) : relativePath
                 let destItemURL = destRoot.appendingPathComponent(safeRelativePath)
                 
-                let status = DateComparator.compare(source: item, destPath: destItemURL, rule: self.settings.overwriteRule)
+                let status = DateComparator.compare(source: item, destPath: destItemURL, rule: self.settings.overwriteRule, compareByHash: self.settings.compareByHash)
                 
                 DispatchQueue.main.async {
                     self.comparisonResults[item.id] = status

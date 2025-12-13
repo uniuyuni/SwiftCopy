@@ -14,4 +14,5 @@ class AppSettings: ObservableObject {
     @AppStorage("copyHiddenFiles") var copyHiddenFiles: Bool = false
     @AppStorage("recursiveScan") var recursiveScan: Bool = true
     @AppStorage("preserveAttributes") var preserveAttributes: Bool = true
+    @AppStorage("compareByHash") var compareByHash: Bool = false
 }

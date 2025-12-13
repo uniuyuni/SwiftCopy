@@ -53,7 +53,7 @@ class MainViewModelTests: XCTestCase {
         XCTAssertEqual(self.viewModel.sourceFiles.count, 1)
         if let item = self.viewModel.sourceFiles.first {
             XCTAssertEqual(item.name, "FileA.txt")
-            XCTAssertEqual(self.viewModel.comparisonResults[item.id], .copy)
+            XCTAssertEqual(self.viewModel.comparisonResults[item.id], .add)
         }
     }
     
