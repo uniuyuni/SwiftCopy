@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Define correct paths
+APP_PATH="/Applications/SwiftCopy.app"
+EXT_PATH="$APP_PATH/Contents/PlugIns/FinderExtension.appex"
+
+# Register the extension
+if [ -e "$EXT_PATH" ]; then
+    /usr/bin/pluginkit -a "$EXT_PATH"
+fi
+
+exit 0

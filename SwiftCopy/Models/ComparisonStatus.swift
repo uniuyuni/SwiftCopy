@@ -1,6 +1,6 @@
 import Foundation
 
-enum ComparisonStatus {
+enum ComparisonStatus: Equatable, Sendable {
     case add // Source exists, dest missing -> Add
     case update // Source is newer -> Update
     case skip // Dest is newer or same -> Skip

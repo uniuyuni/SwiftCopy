@@ -23,18 +23,34 @@ class MainViewModel: ObservableObject {
     @Published var showErrorLog: Bool = false
     @Published var searchText: String = ""
     
+    @Published var shouldAutoPromptForDest: Bool = false
+    
     let settings: AppSettings
     
     private var cancellables = Set<AnyCancellable>()
     
-    init(settings: AppSettings) {
+    init(settings: AppSettings, launchSource: URL? = nil, launchDest: URL? = nil) {
         self.settings = settings
         
-        if let sourcePathStr = UserDefaults.standard.string(forKey: "lastSourcePath") {
+        if let launchSource = launchSource {
+            self.sourcePath = launchSource
+            // If checking "source only" logic for launch
+            if launchDest == nil {
+                self.shouldAutoPromptForDest = true
+            }
+        } else if let sourcePathStr = UserDefaults.standard.string(forKey: "lastSourcePath") {
             self.sourcePath = resolveExistingPath(sourcePathStr)
         }
-        if let destPathStr = UserDefaults.standard.string(forKey: "lastDestPath") {
+        
+        if let launchDest = launchDest {
+            self.destPath = launchDest
+        } else if let destPathStr = UserDefaults.standard.string(forKey: "lastDestPath") {
             self.destPath = resolveExistingPath(destPathStr)
+        }
+        
+        // Auto-scan logic
+        if launchSource != nil && launchDest != nil {
+            self.scan()
         }
         
         // Real-time updates
@@ -280,6 +296,8 @@ class MainViewModel: ObservableObject {
     private var processedBytes: Int64 = 0
     private var startTime: Date?
     
+    private var isSelectingDest: Bool = false
+    
     func selectSource() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -296,6 +314,9 @@ class MainViewModel: ObservableObject {
     }
     
     func selectDest() {
+        guard !isSelectingDest else { return }
+        isSelectingDest = true
+        
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
@@ -304,9 +325,18 @@ class MainViewModel: ObservableObject {
         if let dest = destPath {
             panel.directoryURL = dest
         }
-        if panel.runModal() == .OK {
+        
+        // Use beginSheet or simple runModal, but handle flag reset
+        let response = panel.runModal()
+        
+        if response == .OK {
             self.destPath = panel.url
             scan()
+        }
+        
+        // Reset flag after a short delay to prevent bounce
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.isSelectingDest = false
         }
     }
     
@@ -341,15 +371,15 @@ class MainViewModel: ObservableObject {
             var excluded: Set<UUID> = []
             self.calculateSmartSelection(items: items, results: results, excluded: &excluded)
             
-            // Calculate Stats (Add/Update)
-            var add = 0
-            var update = 0
-            for status in results.values {
-                if status == .add { add += 1 }
-                else if status == .update { update += 1 }
-            }
-            
             DispatchQueue.main.async {
+                // Calculate Stats (Add/Update)
+                var add = 0
+                var update = 0
+                for status in results.values {
+                    if status == .add { add += 1 }
+                    else if status == .update { update += 1 }
+                }
+
                 self.comparisonResults = results
                 self.excludedFileIds = excluded
                 self.addCount = add
