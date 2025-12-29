@@ -187,7 +187,41 @@ struct UnifiedRowView: View {
                  Color.clear
                     .frame(maxWidth: .infinity)
             } else {
-                FileRowView(item: displayItem.file, isSource: false)
+                // Check if we have an override (updated after copy)
+                let destItem: FileItem = {
+                    let baseItem = viewModel.destFileOverrides[displayItem.file.id] ?? displayItem.file
+                    
+                    // Determine if we should preview "Now"
+                    var shouldPreview = false
+                    
+                    // Case 1: Standard update status
+                    if status == .update {
+                        shouldPreview = true
+                    }
+                    // Case 2: Manually selected (Forced Copy) AND Destination exists (not .add)
+                    // If status is .add, there is no destination file yet, so the date preview logic is handled differently 
+                    // (actually .add row handles its own display, usually hidden or phantom)
+                    // But here we are in the "else" block of "if status == .add", so destination MUST exist (or be treated as such).
+                    else if viewModel.isSelected(displayItem.file.id) {
+                         shouldPreview = true
+                    }
+                    
+                    if viewModel.destFileOverrides[displayItem.file.id] == nil && shouldPreview {
+                        if !viewModel.settings.preserveAttributes {
+                            // Update preview: Show "Now"
+                            return FileItem(
+                                url: baseItem.url,
+                                isDirectory: baseItem.isDirectory,
+                                modificationDate: Date(), // Preview current time
+                                size: baseItem.size,
+                                children: baseItem.children
+                            )
+                        }
+                    }
+                    return baseItem
+                }()
+                
+                FileRowView(item: destItem, isSource: false)
                     .opacity(0.5)
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())

@@ -1,8 +1,8 @@
 .DS_Store
 .build/
 .swiftpm/
-TESTFILES/
 *.app
+*.pkg
 *.jpg
 build_*
 test_*

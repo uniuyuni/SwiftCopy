@@ -1,45 +1,52 @@
 #!/bin/bash
 
 APP_NAME="SwiftCopy"
-# Default to release build for optimized performance
-BUILD_CONFIG="release" 
+BUILD_DIR="./build_root"
 
-echo "Building $APP_NAME ($BUILD_CONFIG)..."
-swift build -c $BUILD_CONFIG
+echo "🚀 Building $APP_NAME with Xcodebuild..."
 
-if [ $? -ne 0 ]; then
-    echo "Build failed."
+# Clean previous build
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
+
+# Build using Xcodebuild (Supports AppIcon & FinderExtension)
+set -o pipefail
+xcodebuild -scheme SwiftCopy -configuration Release -derivedDataPath ./build_temp -quiet 2>&1 | grep -v "dyld" | grep -v "ld: warning"
+BUILD_STATUS=$?
+
+if [ $BUILD_STATUS -ne 0 ]; then
+    echo "❌ Build failed with exit code $BUILD_STATUS"
+    exit 1
+fi
+set +o pipefail
+
+# Find the app
+SOURCE_APP=$(find ./build_temp/Build/Products/Release -name "$APP_NAME.app" -maxdepth 1 | head -n 1)
+
+if [ -z "$SOURCE_APP" ]; then
+    echo "❌ Build failed: Could not find $APP_NAME.app"
     exit 1
 fi
 
-APP_BUNDLE="$APP_NAME.app"
-# Path to binary depends on config
-BINARY_PATH=".build/$BUILD_CONFIG/$APP_NAME"
+echo "✅ Build Successful!"
 
-echo "Creating App Bundle..."
-# Clean previous build
-rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS"
-mkdir -p "$APP_BUNDLE/Contents/Resources"
+# Copy app to current directory
+rm -rf "$APP_NAME.app"
+cp -R "$SOURCE_APP" "./"
 
-echo "Copying binary..."
-cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/"
-
-echo "Copying Info.plist..."
+# Inject Info.plist to fix version (Same logic as create_pkg.sh)
 if [ -f "SwiftCopy/Info.plist" ]; then
-    cp "SwiftCopy/Info.plist" "$APP_BUNDLE/Contents/"
-else
-    echo "Warning: SwiftCopy/Info.plist not found."
+    echo "⚠️  Updating Info.plist version..."
+    TARGET_PLIST="./$APP_NAME.app/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 3.1" "$TARGET_PLIST"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 3.1" "$TARGET_PLIST"
+    
+    echo "🔑 Re-signing app..."
+    codesign --force --deep --sign - --preserve-metadata=identifier,entitlements,flags "./$APP_NAME.app"
 fi
 
-echo "Copying Resources..."
-if [ -f "icon.ico" ]; then
-    cp "icon.ico" "$APP_BUNDLE/Contents/Resources/"
-else
-    echo "Warning: icon.ico not found."
-fi
+# Cleanup
+rm -rf ./build_temp
+rm -rf "$BUILD_DIR"
 
-# Clean up any restricted attributes if necessary (sometimes helps with ad-hoc signing issues on local run)
-xattr -cr "$APP_BUNDLE"
-
-echo "Done! $APP_BUNDLE created at $(pwd)/$APP_BUNDLE"
+echo "🎉 Done! $APP_NAME.app is ready."

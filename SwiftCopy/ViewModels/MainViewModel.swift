@@ -7,6 +7,7 @@ class MainViewModel: ObservableObject {
     @Published var destPath: URL?
     @Published var sourceFiles: [FileItem] = []
     @Published var comparisonResults: [UUID: ComparisonStatus] = [:] // Map FileItem ID to status
+    @Published var destFileOverrides: [UUID: FileItem] = [:] // Map FileItem ID to overridden destination file (for date display)
     @Published var isScanning: Bool = false
     @Published var isCopying: Bool = false
     @Published var progress: Double = 0.0
@@ -54,6 +55,9 @@ class MainViewModel: ObservableObject {
         }
         
         // Real-time updates
+        // Real-time updates
+        // We observe all settings EXCEPT preserveAttributes for auto-scan.
+        // preserveAttributes only affects the copy action, not the scan comparison.
         settings.objectWillChange
             .debounce(for: .milliseconds(100), scheduler: RunLoop.main)
             .sink { [weak self] _ in
@@ -61,6 +65,8 @@ class MainViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
+    
+    private var lastSettingsHash: Int = 0
     
     private func resolveExistingPath(_ pathStr: String) -> URL? {
         let fileManager = FileManager.default
@@ -93,8 +99,23 @@ class MainViewModel: ObservableObject {
     }
     
     private func handleSettingsChange() {
-        print("Settings changed, re-scanning...")
-        scan()
+        // Calculate hash of scan-affecting settings
+        var hasher = Hasher()
+        hasher.combine(settings.overwriteRule)
+        hasher.combine(settings.copyHiddenFiles)
+        hasher.combine(settings.recursiveScan)
+        hasher.combine(settings.compareByHash)
+        let newHash = hasher.finalize()
+        
+        if newHash != lastSettingsHash {
+            lastSettingsHash = newHash
+            print("Scan-affecting settings changed, re-scanning...")
+            scan()
+        } else {
+            print("Settings changed but scan not required (likely preserveAttributes)")
+            // Force UI update so views can react to setting change (e.g. date preview)
+            self.objectWillChange.send()
+        }
     }
     
     enum SortOption {
@@ -361,6 +382,7 @@ class MainViewModel: ObservableObject {
                 self.parentMap = [:]
                 self.buildParentMap(items: items)
                 self.comparisonResults = [:] // Clear previous results
+                self.destFileOverrides = [:] // Clear previous overrides
             }
             
             // Stage 2: Compare
@@ -505,6 +527,15 @@ class MainViewModel: ObservableObject {
                         if status == .add { self.addCount = max(0, self.addCount - 1) }
                         if status == .update { self.updateCount = max(0, self.updateCount - 1) }
                         if status == .add { self.destFilesCount += 1 }
+                        
+                        // If we didn't preserve attributes, the file on disk has "now" as date.
+                        // We create an override item to reflect this in the UI.
+                        if !self.settings.preserveAttributes {
+                            let now = Date()
+                            // Create a dummy item representing the destination file
+                            let overriddenItem = FileItem(url: destItemURL, isDirectory: item.isDirectory, modificationDate: now, size: item.size)
+                            self.destFileOverrides[item.id] = overriddenItem
+                        }
                     }
                 } catch {
                     print("Copy error: \(error)")
@@ -541,6 +572,27 @@ class MainViewModel: ObservableObject {
                 self.transferSpeed = 0.0
                 self.timeRemaining = 0.0
             }
+            
+            // Post-Processing: Restore Directory Attributes
+            // Writing files into directories updates the directory's modification date.
+            // We must re-apply the source attributes to directories after all their children are written.
+            if self.settings.preserveAttributes {
+                let directories = copyList.filter { $0.isDirectory }
+                for item in directories {
+                    // Re-calculate paths as done in the loop
+                    let sourcePath = sourceRoot.resolvingSymlinksInPath().path
+                    let itemPath = item.url.resolvingSymlinksInPath().path
+                    let relativePath = itemPath.replacingOccurrences(of: sourcePath, with: "")
+                    let safeRelativePath = relativePath.hasPrefix("/") ? String(relativePath.dropFirst()) : relativePath
+                    let destItemURL = destRoot.appendingPathComponent(safeRelativePath)
+                    
+                    do {
+                        try CopyManager.copyAttributes(source: item.url, dest: destItemURL)
+                    } catch {
+                        print("Failed to restore attributes for directory \(item.name): \(error)")
+                    }
+                }
+            }
         }
     }
     
@@ -549,11 +601,11 @@ class MainViewModel: ObservableObject {
         for item in items {
             if excludedFileIds.contains(item.id) { continue }
             
-            if let status = comparisonResults[item.id] {
-                if status == .add || status == .update {
-                     list.append(item)
-                }
-            }
+            // Logic Change for v3.0: 
+            // If the item is manually selected (not excluded), we force it to be copied 
+            // regardless of comparison status (e.g. even if .skip/identical).
+            list.append(item)
+            
             if let children = item.children {
                 list.append(contentsOf: getCopyList(items: children))
             }

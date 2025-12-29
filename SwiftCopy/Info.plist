@@ -15,5 +15,11 @@
 			</array>
 		</dict>
 	</array>
+    <key>CFBundleShortVersionString</key>
+    <string>3.1</string>
+    <key>CFBundleVersion</key>
+    <string>3.1</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
 </dict>
 </plist>
