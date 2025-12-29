@@ -454,9 +454,11 @@ class MainViewModel: ObservableObject {
         return hasIncludedItem
     }
     
-    private func compareRecursively(items: [FileItem], sourceRoot: URL, destRoot: URL, results: inout [UUID: ComparisonStatus]) {
+    @discardableResult
+    private func compareRecursively(items: [FileItem], sourceRoot: URL, destRoot: URL, results: inout [UUID: ComparisonStatus]) -> Bool {
         let sourcePath = sourceRoot.standardized.path
         let destPath = destRoot.standardized.path
+        var hasChanges = false
         
         for item in items {
             let itemPath = item.url.standardized.path
@@ -467,15 +469,27 @@ class MainViewModel: ObservableObject {
             
             let destItemURL = URL(fileURLWithPath: destPath).appendingPathComponent(relativePath)
             
-            let status = DateComparator.compare(source: item, destPath: destItemURL, rule: self.settings.overwriteRule, compareByHash: self.settings.compareByHash)
-            results[item.id] = status
+            var status = DateComparator.compare(source: item, destPath: destItemURL, rule: self.settings.overwriteRule, compareByHash: self.settings.compareByHash)
             
+            var childHasChanges = false
             if let children = item.children {
                 if self.settings.recursiveScan {
-                    compareRecursively(items: children, sourceRoot: sourceRoot, destRoot: destRoot, results: &results)
+                    childHasChanges = compareRecursively(items: children, sourceRoot: sourceRoot, destRoot: destRoot, results: &results)
                 }
             }
+            
+            // If the folder itself doesn't need copy (.skip), but children do, mark the folder as .update so the user sees it.
+            if item.isDirectory && status == .skip && childHasChanges {
+                status = .update
+            }
+            
+            results[item.id] = status
+            
+            if status == .add || status == .update {
+                hasChanges = true
+            }
         }
+        return hasChanges
     }
     
     func startCopy() {

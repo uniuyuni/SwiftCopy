@@ -40,13 +40,13 @@ TARGET_PLIST="$BUILD_DIR/$APP_NAME.app/Contents/Info.plist"
 SOURCE_PLIST="$SOURCE_APP/Contents/Info.plist"
 
 if [ -f "SwiftCopy/Info.plist" ]; then
-    echo "⚠️  Updating version in Info.plist to 3.1..."
-    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 3.1" "$TARGET_PLIST"
-    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 3.1" "$TARGET_PLIST"
+    echo "⚠️  Updating version in Info.plist to 3.2..."
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 3.2" "$TARGET_PLIST"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 3.2" "$TARGET_PLIST"
     
     # Also update source so "Extract Version" below reads correct value
-    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 3.1" "$SOURCE_PLIST"
-    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 3.1" "$SOURCE_PLIST"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 3.2" "$SOURCE_PLIST"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 3.2" "$SOURCE_PLIST"
 
     # Re-sign the app because we modified Info.plist
     echo "🔑 Re-signing app to fix validity..."
