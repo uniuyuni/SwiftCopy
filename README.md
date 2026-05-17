@@ -1,34 +1,59 @@
 # SwiftCopy
 
-SwiftCopy is a powerful and intuitive macOS utility for comparing and copying files between two directories. Built with SwiftUI, it offers a modern two-pane interface similar to Finder, allowing users to easily visualize differences and synchronize folders with intelligent date-based comparison logic.
+SwiftCopy is a powerful and intuitive macOS utility for comparing and copying files between two directories. Built with SwiftUI, it offers a modern three-pane interface similar to Finder, allowing users to easily visualize differences and synchronize folders with intelligent date-based (or checksum-based) comparison logic.
 
 ## Features
 
 ### Core Functionality
-- **Two-Pane Comparison**: Side-by-side view of Source and Destination folders.
-- **Intelligent Comparison**: Automatically identifies files that need updating based on modification dates.
+- **Three-Pane Comparison**: Side-by-side view of Source, Status, and Destination columns.
+- **Intelligent Comparison**: Automatically identifies files that need updating.
     - **Copy (->)**: Source file is newer or missing in destination.
     - **Skip (==)**: Files are identical.
     - **Newer in Dest (<-)**: Destination file is newer than source.
+- **Checksum Comparison**: Optional SHA-256 hash-based comparison for byte-perfect accuracy (slower than date comparison).
 - **Recursive Scanning**:
     - **Enabled**: Deeply scans all subfolders and includes them in the comparison/copy operation.
     - **Disabled**: Displays folder structure but only compares and copies files in the top-level directory.
-- **Smart Selection**: Quickly select only the files that need updating ("Smart Select") or toggle all files.
+- **Smart Selection**: Automatically selects only the files that need updating (add/update), with ancestor folders included automatically.
+- **Forced Copy**: Manually selecting a file will force-copy it regardless of comparison status.
 
 ### User Interface
-- **Drag & Drop**: Easily set Source and Destination paths by dragging folders onto the window.
-- **Real-time Updates**: Changing settings (like Overwrite Rules or Recursive Scan) immediately reflects in the file list without manual refreshing.
-- **Sortable Columns**: Sort files by Name, Date, or Size.
-- **Progress Tracking**: Visual progress bar and status updates during copy operations.
+- **Drag & Drop**: Easily set Source and Destination paths by dragging folders onto the header buttons or the file list panes.
+- **Search / Filter**: Filter the file list in real-time using the search field in the toolbar.
+- **Expand / Collapse All**: Toggle all folder trees at once with the indent-list button in the column header.
+- **Real-time Updates**: Changing settings (Overwrite Rules, Recursive Scan, Checksum Comparison, etc.) immediately re-scans without manual refresh.
+- **Sortable Columns**: Sort files by Name, Date, or Size (click column headers; click again to reverse order).
+- **Progress Tracking**: Visual progress bar with current file name, transfer speed (MB/s), and estimated time remaining.
+- **Status Bar**: Shows source and destination item counts, plus the number of files to add and update.
 - **Error Logging**: Detailed error log view for any issues encountered during the copy process.
+
+### Finder Integration
+- **Context Menu**: Right-click any folder in Finder to open it directly as the Source in SwiftCopy via the "Open with SwiftCopy" menu item (requires enabling the SwiftCopy Finder Extension in System Settings → Privacy & Security → Extensions → Finder Extensions).
+- **URL Scheme**: Launch SwiftCopy and set the source folder programmatically using the custom URL scheme:
+  ```
+  swiftcopy://set-source?path=/path/to/folder
+  ```
+  SwiftCopy will open the folder as the Source and automatically prompt you to select a Destination.
+
+### Command-Line Launch
+You can launch SwiftCopy with pre-set folders from the terminal:
+```bash
+open -a SwiftCopy --args -source /path/to/source -dest /path/to/destination
+```
+- `-source <path>` — Sets the Source folder.
+- `-dest <path>` (or `-target <path>`) — Sets the Destination folder.
+
+If both are provided, scanning starts automatically. If only `-source` is provided, SwiftCopy prompts for a Destination on launch.
 
 ### Settings & Customization
 - **Overwrite Rules**:
-    - *Overwrite if Newer* (Default): Only copies if the source file is newer.
-    - *Always Overwrite*: Replaces destination files regardless of date.
-    - *Never Overwrite*: Skips files that already exist in the destination.
+    - *If Newer* (Default): Only copies if the source file is newer.
+    - *Always*: Replaces destination files regardless of date.
+    - *Never*: Skips files that already exist in the destination.
 - **Copy Hidden Files**: Toggle to include or exclude hidden files (e.g., `.git`, `.DS_Store`).
-- **Preserve Attributes**: Option to preserve original file modification and creation dates.
+- **Recursive Scan**: Enable or disable deep directory traversal.
+- **Preserve File Attributes**: Option to preserve original file modification and creation dates. When disabled, copied files receive the current timestamp.
+- **Checksum Comparison (Slow)**: Uses SHA-256 hashing instead of modification dates for comparison.
 - **Path Persistence**: Remembers your last used folders and settings between sessions.
 - **Auto-Resolution**: If a saved folder path is missing, the app automatically navigates up to the nearest existing parent folder.
 
@@ -36,38 +61,45 @@ SwiftCopy is a powerful and intuitive macOS utility for comparing and copying fi
 
 ### Requirements
 - macOS 12.0 or later
-- Xcode 15+ (for building)
+- Xcode 15+ (for building with the Finder Extension)
 
-### Build Instructions
+### Build via Xcode (Recommended)
 1. Clone the repository.
-2. Open the project directory in a terminal.
-3. Run the following command to build the release version:
+2. Open `SwiftCopy.xcodeproj` in Xcode.
+3. Select the `SwiftCopy` scheme and build/run.
+
+### Build via Swift Package Manager (App only, no Finder Extension)
+1. Clone the repository.
+2. Run the following command to build the release version:
    ```bash
    swift build -c release
    ```
-4. The executable will be located in `.build/release/SwiftCopy`.
-5. Alternatively, open the project in Xcode and run the `SwiftCopy` scheme.
+3. The executable will be located at `.build/release/SwiftCopy`.
 
 ## Usage
 
 1. **Select Folders**:
-   - Click "Select..." or drag a folder into the **Source** pane (Left).
-   - Click "Select..." or drag a folder into the **Destination** pane (Right).
+   - Click **Source: Select** or drag a folder into the Source pane.
+   - Click **Dest: Select** or drag a folder into the Destination pane.
+   - Or right-click a folder in Finder and choose **Open with SwiftCopy**.
 2. **Review Differences**:
-   - The app will automatically scan and compare files.
-   - Icons indicate the status of each file.
+   - The app automatically scans and compares files.
+   - Status icons indicate whether each file needs to be added, updated, or is already up to date.
 3. **Configure Settings** (Optional):
-   - Click the "Settings" button (Gear icon) to adjust Overwrite Rules, Recursive Scan, etc.
+   - Open **SwiftCopy → Settings** (or ⌘,) to adjust Overwrite Rules, Recursive Scan, Checksum Comparison, etc.
 4. **Select Files**:
-   - Use the checkbox in the header to "Smart Select" all copyable files.
-   - Or manually check/uncheck specific files.
+   - Smart selection is applied automatically after scanning.
+   - Click the checkmark icon in the header to toggle between Smart Select and Deselect All.
+   - Manually check/uncheck individual files or folders.
 5. **Copy**:
-   - Click the "Copy to Destination" button to start the operation.
-   - Wait for the progress bar to complete.
+   - Click **Start Copy** to begin the operation.
+   - The progress bar shows the current file, transfer speed, and estimated time remaining.
+   - Any errors are surfaced via the error log button in the toolbar.
 
 ## Technical Details
 
 - **Language**: Swift 5.9
-- **Framework**: SwiftUI, AppKit, Combine
+- **Framework**: SwiftUI, AppKit, Combine, FinderSync
 - **Architecture**: MVVM (Model-View-ViewModel)
-- **Concurrency**: Background threads for scanning and copying to ensure a responsive UI.
+- **Concurrency**: Background threads for scanning and copying to keep the UI responsive.
+- **Extensions**: Finder Sync Extension for Finder context menu integration.
